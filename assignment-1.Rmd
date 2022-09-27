@@ -1,6 +1,6 @@
 ---
 title: "Assignment 1 - The tidyverse"
-author: "FILL IN YOUR FULL NAME"
+author: "VISHAL TRIPATHI"
 date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
 output:
   html_document:
@@ -30,7 +30,17 @@ knitr::opts_chunk$set(echo = TRUE,
 ***
 
 ```{r, include = T}
+
+options(scipen=999)
+
 # LOAD THE PACKAGES YOU ARE USING IN THIS CODE CHUNK library(nameofpackage)
+library(tidyverse)
+library(magrittr)
+library(legislatoR)
+library(tibble)
+library(ggplot2)
+library(stringr)
+library(DescTools)
 ```
 
 <br>
@@ -66,31 +76,80 @@ The following tasks will be based on data from the `core` and `political` tables
 a) What's the overall share of male legislators in the entire dataset? [1 point]
 
 ```{r}
-# YOUR CODE HERE
+gbr_core <- get_core(legislature = "gbr")
+
+gbr_core %>%
+  dplyr::count(sex)
+
+# Assuming that all NA values of sex implies "other" gender, we calc the male proportion
+male_prop <- ((11049/(552+11049+1613))*100)
+paste("The overall share of male legislators in the dataset is:", round(male_prop,2), "%")
+
+
 ```
 
 b) How many (both in absolute and relative terms) legislators died in the same place they were born in? [1 point]
 
 ```{r}
-# YOUR CODE HERE
+
+#separating the latitudes and longitudes of both birth and death places, then counting exact matches 
+gbr_core %>% 
+  separate(col=birthplace, c("birth_lat", "birth_long"), sep=",") %>%
+  separate(col=deathplace, c("death_lat", "death_long"), sep=",") %>%
+  mutate(bd_same = ifelse((birth_lat == death_lat & birth_long == death_long), 1, 0)) %>%
+  count(bd_same)
+
+bd_rel <- (188*100)/(1365+188+11661)
+
+paste("The no. of who legislators died in the same place they were born in - in ABSOLUTE terms:", 188)
+
+paste("The no. of who legislators died in the same place they were born in - in RELATIVE terms:", round(bd_rel,2))
+
 ```
 
 c) Create a new variable `age_at_death` that reports the age at which legislators died. Then, plot the distribution of that variable for the entire dataset. [2 points]
 
 ```{r}
-# YOUR CODE HERE
+
+#calculating difference in birth and death dates in days, dividing by 365 and then rounding off
+
+gbr_core%>% 
+  mutate(age_at_death = round((as.numeric(difftime(as.Date(death), as.Date(birth), unit="days"))/365),0)) %>% 
+  ggplot2::ggplot(aes(x=age_at_death)) + 
+  geom_histogram(color="black", fill="lightblue",
+                 linetype="dashed")
+
 ```
 
 d) What is the most frequent birthday in your sample (e.g., “January 15")? [2 points]
 
 ```{r}
-# YOUR CODE HERE
+# Modifying th year of each birth date to 2022 to compare frequency
+
+gbr_core %>%
+ mutate(mod_birth = update(birth, year = 2022)) %>%
+  count(mod_birth)
+
+paste("The most frequent birthday is 1st of January")
 ```
 
 e) Generate a table that provides the 5 legislators with the longest names (in terms of number of characters, ignoring whitespace). [2 points]
 
 ```{r}
-# YOUR CODE HERE
+
+new_df <- gbr_core %>%
+ mutate(name_mod1 = str_replace_all(name," ","" )) %>%  # removing white spaces
+  mutate(name_mod1 = str_replace_all(name_mod1,"-","" ))%>% # removing dashes
+   mutate(name_mod1 = str_replace_all(name_mod1,",","" )) # removing commas
+
+new_df %>%
+  mutate(name_length = nchar(name_mod1)) %>% #storing length of name
+   arrange(desc(name_length)) %>% #arranging in descending order
+    top_n(5, name_length) %>% #printing top 5 rows
+     select(name, name_mod1)
+
+
+
 ```
 
 <br>
@@ -102,17 +161,67 @@ e) Generate a table that provides the 5 legislators with the longest names (in t
 a) Using data from all sessions, provide a plot that shows the share of male legislators by session! [3 points]
 
 ```{r}
-# YOUR CODE HERE
+# importing data from each session and storing in different data frames
+gbr_core <- get_core(legislature = "gbr")
+aut_core <- get_core(legislature = "aut")
+can_core <- get_core(legislature = "can")
+cze_core <- get_core(legislature = "cze")
+fra_core <- get_core(legislature = "fra")
+deu_core <- get_core(legislature = "deu")
+irl_core <- get_core(legislature = "irl")
+sco_core <- get_core(legislature = "sco")
+esp_core <- get_core(legislature = "esp")
+usa_core <- get_core(legislature = "usa_house")
+
+#combining all data frames in a list
+df_list_core <- list(gbr_core, aut_core, can_core, cze_core, fra_core, deu_core, irl_core, sco_core, esp_core, usa_core)
+
+#joining all data frames in the list to make a master data frame
+master_data_core <- df_list_core %>% 
+  reduce(full_join)
+
+#filtering legislators by country and sex in master data frame
+master_male <- master_data_core %>%
+  group_by(country) %>%
+   filter(sex == "male") 
+
+#plotting a bar chart to show distribution of male legislators across countries
+ggplot(master_male, aes(x = country, y = length(sex), fill = country)) +
+    geom_bar(stat = "identity") +
+    labs(y= "No. of Male Legislators", x = "Country") +
+    coord_flip() +
+    theme_classic()
+
+
+
 ```
 
 b) Explore another relation of variables in the dataset. Your analysis should (i) use data from both the `core` and the `political` table and (ii) feature data from several sessions. Also, offer a brief description and interpretation of your findings! [5 points]
 
 ```{r}
 # YOUR CODE HERE
+
+# importing data from each session and storing in different data frames
+gbr_pol <- get_political(legislature = "gbr")
+
+#merging both pol and core data frames of Great Britain by pageID
+
+total_gbr <- merge(gbr_core, gbr_pol, by= "pageid", all=TRUE)
+
+total_gbr %>%
+    filter(session_start > '1979-05-04') %>%
+    ggplot(aes(x = party, y = length(sex), fill = sex)) +
+    geom_bar(stat = "identity") +
+    labs(y= "No. of Legislators elected by Party", x = "Party") +
+    coord_flip()
+   
+
 ```
 
 <div class = "answer">
-YOUR ANSWER SHOULD GO HERE
+
+In this graph, we are analysing the number of male and females legislators elcted by each party in United Kingdom since the election of their first female Prime Minister, Ms. Margaret Thatcher on 4th of May 1979. The trend shows that despite Ms. Thatcher belonging to the Conservative Party, it is the Labour Party which has elected more female legislators to the Parliament.
+
 </div>
 
 <br>
